@@ -96,6 +96,19 @@ function Cache:delete(key)
     return false
 end
 
+function Cache:size()
+    return self.size
+end
+
+function Cache:purge()
+    local now = os.time()
+    for key, node in pairs(self.data) do
+        if now > node.expires then
+            self:delete(key)
+        end
+    end
+end
+
 function Cache:clear()
     self.data = {}
     self.head = nil

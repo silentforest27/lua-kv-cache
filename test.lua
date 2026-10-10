@@ -12,6 +12,7 @@ print("Running tests...")
 local c = Cache.new({ max_size = 2, default_ttl = 10 })
 c:set("a", 1)
 assert_eq(c:get("a"), 1, "Basic get failed")
+assert_eq(c:size(), 1, "Size should be 1")
 
 -- Test TTL
 local c_ttl = Cache.new({ default_ttl = 0 })
@@ -29,5 +30,15 @@ c_cap:set("3", "three") -- Should evict "1"
 assert_eq(c_cap:get("1"), nil, "Eviction failed")
 assert_eq(c_cap:get("2"), "two", "Wrong key evicted")
 assert_eq(c_cap:get("3"), "three", "New key not found")
+
+-- Test Purge
+local c_purge = Cache.new({ default_ttl = 0 })
+c_purge:set("p1", "val1", 0)
+c_purge:set("p2", "val2", 100)
+local start_p = os.time()
+while os.time() == start_p do end
+c_purge:purge()
+assert_eq(c_purge:size(), 1, "Purge failed to remove expired item")
+assert_eq(c_purge:get("p2"), "val2", "Purge removed non-expired item")
 
 print("All tests passed!")
