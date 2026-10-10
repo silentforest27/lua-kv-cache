@@ -6,63 +6,89 @@ function Cache.new(options)
     self.max_size = options.max_size or 1000
     self.default_ttl = options.default_ttl or 3600
     self.data = {}
-    self.access_order = {}
-    self.order_map = {}
+    
+    -- LRU Doubly Linked List
+    self.head = nil
+    self.tail = nil
+    
     self.size = 0
     return self
 end
 
-local function remove_oldest(self)
-    for k, v in pairs(self.access_order) do
-        local key = v
-        self.data[key] = nil
-        self.order_map[key] = nil
-        self.size = self.size - 1
-        -- Clear the access order list (simplified LRU)
-        self.access_order = {}
-        self.order_map = {}
-        break
+local function detach_node(self, node)
+    if node.prev then
+        node.prev.next = node.next
+    else
+        self.head = node.next
+    end
+    if node.next then
+        node.next.prev = node.prev
+    else
+        self.tail = node.prev
+    end
+    node.next = nil
+    node.prev = nil
+end
+
+local function attach_to_head(self, node)
+    node.next = self.head
+    node.prev = nil
+    if self.head then
+        self.head.prev = node
+    end
+    self.head = node
+    if not self.tail then
+        self.tail = node
     end
 end
 
 function Cache:set(key, value, ttl)
     local expiration = os.time() + (ttl or self.default_ttl)
-    
-    if self.data[key] then
-        self.size = self.size - 1
-    end
+    local node = self.data[key]
 
-    if self.size >= self.max_size then
-        remove_oldest(self)
+    if node then
+        -- Update existing
+        node.value = value
+        node.expires = expiration
+        detach_node(self, node)
+        attach_to_head(self, node)
+    else
+        -- New entry
+        if self.size >= self.max_size then
+            -- Evict least recently used (tail)
+            local oldest = self.tail
+            if oldest then
+                self:delete(oldest.key)
+            end
+        end
+        
+        node = { key = key, value = value, expires = expiration }
+        self.data[key] = node
+        attach_to_head(self, node)
+        self.size = self.size + 1
     end
-
-    self.data[key] = { value = value, expires = expiration }
-    self.size = self.size + 1
-    
-    -- Update LRU order
-    self.access_order[os.clock()] = key
-    self.order_map[key] = os.clock()
 end
 
 function Cache:get(key)
-    local item = self.data[key]
-    if not item then return nil end
+    local node = self.data[key]
+    if not node then return nil end
 
-    if os.time() > item.expires then
+    if os.time() > node.expires then
         self:delete(key)
         return nil
     end
 
-    -- Update LRU order on access
-    local now = os.clock()
-    self.access_order[now] = key
-    self.order_map[key] = now
+    -- Move to head (most recently used)
+    detach_node(self, node)
+    attach_to_head(self, node)
     
-    return item.value
+    return node.value
 end
 
 function Cache:delete(key)
-    if self.data[key] then
+    local node = self.data[key]
+    if node then
+        detach_node(self, node)
         self.data[key] = nil
         self.size = self.size - 1
         return true
@@ -72,8 +98,8 @@ end
 
 function Cache:clear()
     self.data = {}
-    self.access_order = {}
-    self.order_map = {}
+    self.head = nil
+    self.tail = nil
     self.size = 0
 end
 
