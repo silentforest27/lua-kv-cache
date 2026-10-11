@@ -41,4 +41,12 @@ c_purge:purge()
 assert_eq(c_purge:size(), 1, "Purge failed to remove expired item")
 assert_eq(c_purge:get("p2"), "val2", "Purge removed non-expired item")
 
+-- Test Clear
+local c_clear = Cache.new({ max_size = 10 })
+c_clear:set("x", 1)
+c_clear:set("y", 2)
+c_clear:clear()
+assert_eq(c_clear:size(), 0, "Clear failed to reset size")
+assert_eq(c_clear:get("x"), nil, "Clear failed to remove elements")
+
 print("All tests passed!")

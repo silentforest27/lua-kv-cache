@@ -100,6 +100,15 @@ function Cache:size()
     return self.size
 end
 
+function Cache:check_expiry(key)
+    local node = self.data[key]
+    if node and os.time() > node.expires then
+        self:delete(key)
+        return true
+    end
+    return false
+end
+
 function Cache:purge()
     local now = os.time()
     for key, node in pairs(self.data) do
