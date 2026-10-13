@@ -85,6 +85,10 @@ function Cache:get(key)
     return node.value
 end
 
+function Cache:exists(key)
+    return self.data[key] ~= nil
+end
+
 function Cache:delete(key)
     local node = self.data[key]
     if node then

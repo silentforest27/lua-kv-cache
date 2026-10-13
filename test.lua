@@ -49,4 +49,10 @@ c_clear:clear()
 assert_eq(c_clear:size(), 0, "Clear failed to reset size")
 assert_eq(c_clear:get("x"), nil, "Clear failed to remove elements")
 
+-- Test Exists
+local c_ex = Cache.new({ max_size = 10 })
+c_ex:set("key", "val")
+assert_eq(c_ex:exists("key"), true, "exists() should return true for existing key")
+assert_eq(c_ex:exists("missing"), false, "exists() should return false for missing key")
+
 print("All tests passed!")
