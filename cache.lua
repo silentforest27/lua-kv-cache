@@ -91,6 +91,14 @@ function Cache:get(key)
     return node.value
 end
 
+function Cache:mget(keys)
+    local result = {}
+    for _, key in ipairs(keys) do
+        result[key] = self:get(key)
+    end
+    return result
+end
+
 function Cache:exists(key)
     return self.data[key] ~= nil
 end

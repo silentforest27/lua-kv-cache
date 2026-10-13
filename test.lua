@@ -89,4 +89,13 @@ assert_eq(c_mset:get("m1"), "val1", "mset() value 1 failed")
 assert_eq(c_mset:get("m2"), "val2", "mset() value 2 failed")
 assert_eq(c_mset:get("m3"), "val3", "mset() value 3 failed")
 
+-- Test mget
+local c_mget = Cache.new({ max_size = 10 })
+c_mget:set("g1", "v1")
+c_mget:set("g2", "v2")
+local results = c_mget:mget({"g1", "g2", "g3"})
+assert_eq(results["g1"], "v1", "mget() value g1 failed")
+assert_eq(results["g2"], "v2", "mget() value g2 failed")
+assert_eq(results["g3"], nil, "mget() should return nil for missing key")
+
 print("All tests passed!")
