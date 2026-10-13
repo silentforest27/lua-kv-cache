@@ -98,4 +98,17 @@ assert_eq(results["g1"], "v1", "mget() value g1 failed")
 assert_eq(results["g2"], "v2", "mget() value g2 failed")
 assert_eq(results["g3"], nil, "mget() should return nil for missing key")
 
+-- Test Increment/Decrement
+local c_inc = Cache.new({ max_size = 10 })
+assert_eq(c_inc:increment("counter"), 1, "Inc missing key should start at 1")
+assert_eq(c_inc:increment("counter"), 2, "Inc existing key failed")
+assert_eq(c_inc:increment("counter", 5), 7, "Inc with amount failed")
+assert_eq(c_inc:decrement("counter"), 6, "Dec existing key failed")
+assert_eq(c_inc:decrement("counter", 3), 3, "Dec with amount failed")
+assert_eq(c_inc:decrement("missing"), -1, "Dec missing key should start at 0 then dec")
+
+-- Test Inc/Dec with non-numeric
+c_inc:set("string", "not a number")
+assert_eq(c_inc:increment("string"), 1, "Inc on non-numeric should reset to 0 then inc")
+
 print("All tests passed!")

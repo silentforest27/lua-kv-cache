@@ -171,4 +171,26 @@ function Cache:keys()
     return keys
 end
 
+function Cache:increment(key, amount)
+    amount = amount or 1
+    local val = self:get(key)
+    if type(val) ~= "number" then
+        val = 0
+    end
+    local new_val = val + amount
+    self:set(key, new_val)
+    return new_val
+end
+
+function Cache:decrement(key, amount)
+    amount = amount or 1
+    local val = self:get(key)
+    if type(val) ~= "number" then
+        val = 0
+    end
+    local new_val = val - amount
+    self:set(key, new_val)
+    return new_val
+end
+
 return Cache
