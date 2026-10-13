@@ -69,6 +69,12 @@ function Cache:set(key, value, ttl)
     end
 end
 
+function Cache:mset(table_data)
+    for key, value in pairs(table_data) do
+        self:set(key, value)
+    end
+end
+
 function Cache:get(key)
     local node = self.data[key]
     if not node then return nil end

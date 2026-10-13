@@ -81,4 +81,12 @@ for _, k in ipairs(keys) do
 end
 assert_eq(found1 and found2, true, "keys() missing expected keys")
 
+-- Test mset
+local c_mset = Cache.new({ max_size = 10 })
+c_mset:mset({ m1 = "val1", m2 = "val2", m3 = "val3" })
+assert_eq(c_mset:size(), 3, "mset() size failed")
+assert_eq(c_mset:get("m1"), "val1", "mset() value 1 failed")
+assert_eq(c_mset:get("m2"), "val2", "mset() value 2 failed")
+assert_eq(c_mset:get("m3"), "val3", "mset() value 3 failed")
+
 print("All tests passed!")
