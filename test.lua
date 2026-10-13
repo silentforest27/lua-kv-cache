@@ -68,4 +68,17 @@ assert_eq(touched_ttl <= 20, true, "Touched TTL too high")
 assert_eq(touched_ttl > 5, true, "Touched TTL did not increase")
 assert_eq(c_time:ttl("missing"), -1, "ttl() for missing key should be -1")
 
+-- Test Keys
+local c_keys = Cache.new({ max_size = 10 })
+c_keys:set("k1", 1)
+c_keys:set("k2", 2)
+local keys = c_keys:keys()
+assert_eq(#keys, 2, "keys() should return 2 keys")
+local found1, found2 = false, false
+for _, k in ipairs(keys) do
+    if k == "k1" then found1 = true end
+    if k == "k2" then found2 = true end
+end
+assert_eq(found1 and found2, true, "keys() missing expected keys")
+
 print("All tests passed!")

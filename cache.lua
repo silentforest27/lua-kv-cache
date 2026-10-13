@@ -149,4 +149,12 @@ function Cache:ttl(key)
     return -1
 end
 
+function Cache:keys()
+    local keys = {}
+    for k in pairs(self.data) do
+        table.insert(keys, k)
+    end
+    return keys
+end
+
 return Cache
