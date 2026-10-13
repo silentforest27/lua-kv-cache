@@ -129,4 +129,24 @@ function Cache:clear()
     self.size = 0
 end
 
+function Cache:touch(key, ttl)
+    local node = self.data[key]
+    if node then
+        node.expires = os.time() + (ttl or self.default_ttl)
+        detach_node(self, node)
+        attach_to_head(self, node)
+        return true
+    end
+    return false
+end
+
+function Cache:ttl(key)
+    local node = self.data[key]
+    if node then
+        local remaining = node.expires - os.time()
+        return remaining > 0 and remaining or 0
+    end
+    return -1
+end
+
 return Cache

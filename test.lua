@@ -55,4 +55,17 @@ c_ex:set("key", "val")
 assert_eq(c_ex:exists("key"), true, "exists() should return true for existing key")
 assert_eq(c_ex:exists("missing"), false, "exists() should return false for missing key")
 
+-- Test Touch and TTL
+local c_time = Cache.new({ default_ttl = 10 })
+c_time:set("t1", "val", 5)
+local initial_ttl = c_time:ttl("t1")
+assert_eq(initial_ttl <= 5, true, "Initial TTL too high")
+assert_eq(initial_ttl > 0, true, "Initial TTL too low")
+
+c_time:touch("t1", 20)
+local touched_ttl = c_time:ttl("t1")
+assert_eq(touched_ttl <= 20, true, "Touched TTL too high")
+assert_eq(touched_ttl > 5, true, "Touched TTL did not increase")
+assert_eq(c_time:ttl("missing"), -1, "ttl() for missing key should be -1")
+
 print("All tests passed!")
