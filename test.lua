@@ -111,4 +111,14 @@ assert_eq(c_inc:decrement("missing"), -1, "Dec missing key should start at 0 the
 c_inc:set("string", "not a number")
 assert_eq(c_inc:increment("string"), 1, "Inc on non-numeric should reset to 0 then inc")
 
+-- Test get_all
+local c_all = Cache.new({ max_size = 10 })
+c_all:set("a1", "v1")
+c_all:set("a2", "v2", 0)
+local start_all = os.time()
+while os.time() == start_all do end
+local all = c_all:get_all()
+assert_eq(all["a1"], "v1", "get_all() missing valid key")
+assert_eq(all["a2"], nil, "get_all() should not return expired key")
+
 print("All tests passed!")

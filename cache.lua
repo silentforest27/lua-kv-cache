@@ -171,6 +171,17 @@ function Cache:keys()
     return keys
 end
 
+function Cache:get_all()
+    local result = {}
+    local now = os.time()
+    for key, node in pairs(self.data) do
+        if now <= node.expires then
+            result[key] = node.value
+        end
+    end
+    return result
+end
+
 function Cache:increment(key, amount)
     amount = amount or 1
     local val = self:get(key)
