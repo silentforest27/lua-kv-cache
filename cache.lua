@@ -1,16 +1,21 @@
 local Cache = {}
 Cache.__index = Cache
 
+local function is_expired(node)
+    return node ~= nil and os.time() > node.expires
+end
+
 function Cache.new(options)
+    options = options or {}
     local self = setmetatable({}, Cache)
     self.max_size = options.max_size or 1000
     self.default_ttl = options.default_ttl or 3600
     self.data = {}
-    
+
     -- LRU Doubly Linked List
     self.head = nil
     self.tail = nil
-    
+
     self.size = 0
     return self
 end
@@ -42,9 +47,30 @@ local function attach_to_head(self, node)
     end
 end
 
+function Cache:purge()
+    local now = os.time()
+    local expired = {}
+    local node = self.head
+    while node do
+        local next_node = node.next
+        if now > node.expires then
+            expired[#expired + 1] = node.key
+        end
+        node = next_node
+    end
+    for _, key in ipairs(expired) do
+        self:delete(key)
+    end
+end
+
 function Cache:set(key, value, ttl)
-    local expiration = os.time() + (ttl or self.default_ttl)
     local node = self.data[key]
+    if node and is_expired(node) then
+        self:delete(key)
+        node = nil
+    end
+
+    local expiration = os.time() + (ttl or self.default_ttl)
 
     if node then
         -- Update existing
@@ -61,7 +87,7 @@ function Cache:set(key, value, ttl)
                 self:delete(oldest.key)
             end
         end
-        
+
         node = { key = key, value = value, expires = expiration }
         self.data[key] = node
         attach_to_head(self, node)
@@ -69,9 +95,9 @@ function Cache:set(key, value, ttl)
     end
 end
 
-function Cache:mset(table_data)
-    for key, value in pairs(table_data) do
-        self:set(key, value)
+function Cache:mset(table_data, ttl)
+    for key, value in pairs(table_data or {}) do
+        self:set(key, value, ttl)
     end
 end
 
@@ -87,7 +113,7 @@ function Cache:get(key)
     -- Move to head (most recently used)
     detach_node(self, node)
     attach_to_head(self, node)
-    
+
     return node.value
 end
 
@@ -100,7 +126,13 @@ function Cache:mget(keys)
 end
 
 function Cache:exists(key)
-    return self.data[key] ~= nil
+    local node = self.data[key]
+    if not node then return false end
+    if is_expired(node) then
+        self:delete(key)
+        return false
+    end
+    return true
 end
 
 function Cache:delete(key)
@@ -115,6 +147,7 @@ function Cache:delete(key)
 end
 
 function Cache:size()
+    self:purge()
     return self.size
 end
 
@@ -127,15 +160,6 @@ function Cache:check_expiry(key)
     return false
 end
 
-function Cache:purge()
-    local now = os.time()
-    for key, node in pairs(self.data) do
-        if now > node.expires then
-            self:delete(key)
-        end
-    end
-end
-
 function Cache:clear()
     self.data = {}
     self.head = nil
@@ -146,6 +170,10 @@ end
 function Cache:touch(key, ttl)
     local node = self.data[key]
     if node then
+        if is_expired(node) then
+            self:delete(key)
+            return false
+        end
         node.expires = os.time() + (ttl or self.default_ttl)
         detach_node(self, node)
         attach_to_head(self, node)
@@ -158,50 +186,159 @@ function Cache:ttl(key)
     local node = self.data[key]
     if node then
         local remaining = node.expires - os.time()
-        return remaining > 0 and remaining or 0
+        if remaining <= 0 then
+            self:delete(key)
+            return 0
+        end
+        return remaining
     end
     return -1
 end
 
 function Cache:keys()
+    local now = os.time()
     local keys = {}
-    for k in pairs(self.data) do
-        table.insert(keys, k)
+    local expired = {}
+    local node = self.head
+    while node do
+        local next_node = node.next
+        if now > node.expires then
+            expired[#expired + 1] = node.key
+        else
+            keys[#keys + 1] = node.key
+        end
+        node = next_node
+    end
+    for _, key in ipairs(expired) do
+        self:delete(key)
     end
     return keys
+end
+
+function Cache:values()
+    local now = os.time()
+    local values = {}
+    local expired = {}
+    local node = self.head
+    while node do
+        local next_node = node.next
+        if now > node.expires then
+            expired[#expired + 1] = node.key
+        else
+            values[#values + 1] = node.value
+        end
+        node = next_node
+    end
+    for _, key in ipairs(expired) do
+        self:delete(key)
+    end
+    return values
 end
 
 function Cache:get_all()
     local result = {}
     local now = os.time()
+    local expired = {}
     for key, node in pairs(self.data) do
-        if now <= node.expires then
+        if now > node.expires then
+            expired[#expired + 1] = key
+        else
             result[key] = node.value
         end
+    end
+    for _, key in ipairs(expired) do
+        self:delete(key)
     end
     return result
 end
 
-function Cache:increment(key, amount)
+function Cache:increment(key, amount, ttl)
     amount = amount or 1
     local val = self:get(key)
     if type(val) ~= "number" then
         val = 0
     end
     local new_val = val + amount
-    self:set(key, new_val)
+    self:set(key, new_val, ttl)
     return new_val
 end
 
-function Cache:decrement(key, amount)
+function Cache:decrement(key, amount, ttl)
     amount = amount or 1
     local val = self:get(key)
     if type(val) ~= "number" then
         val = 0
     end
     local new_val = val - amount
-    self:set(key, new_val)
+    self:set(key, new_val, ttl)
     return new_val
 end
+
+function Cache:mdelete(keys, ...)
+    local list = {}
+    if type(keys) == "table" then
+        if #keys > 0 and keys[1] ~= nil then
+            for _, key in ipairs(keys) do
+                list[#list + 1] = key
+            end
+        else
+            for key in pairs(keys) do
+                list[#list + 1] = key
+            end
+        end
+    else
+        list = { keys, ... }
+    end
+
+    local count = 0
+    for _, key in ipairs(list) do
+        if self:delete(key) then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+function Cache:get_or_set(key, default_value, ttl)
+    local node = self.data[key]
+    if node then
+        if is_expired(node) then
+            self:delete(key)
+        else
+            detach_node(self, node)
+            attach_to_head(self, node)
+            return node.value
+        end
+    end
+
+    local value = default_value
+    if type(default_value) == "function" then
+        value = default_value()
+    end
+    self:set(key, value, ttl)
+    return value
+end
+
+function Cache:setnx(key, value, ttl)
+    if self:exists(key) then
+        return false
+    end
+    self:set(key, value, ttl)
+    return true
+end
+
+function Cache:getset(key, value, ttl)
+    local old = self:get(key)
+    self:set(key, value, ttl)
+    return old
+end
+
+-- Common aliases
+Cache.has = Cache.exists
+Cache.count = Cache.size
+Cache.mdel = Cache.mdelete
+Cache.delete_many = Cache.mdelete
+Cache.remember = Cache.get_or_set
+Cache.fetch = Cache.get_or_set
 
 return Cache

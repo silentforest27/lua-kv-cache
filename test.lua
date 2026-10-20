@@ -121,4 +121,64 @@ local all = c_all:get_all()
 assert_eq(all["a1"], "v1", "get_all() missing valid key")
 assert_eq(all["a2"], nil, "get_all() should not return expired key")
 
+-- Test Values
+local c_values = Cache.new({ max_size = 10 })
+c_values:set("v1", 10)
+c_values:set("v2", 20)
+local values = c_values:values()
+assert_eq(#values, 2, "values() count failed")
+local found10, found20 = false, false
+for _, value in ipairs(values) do
+    if value == 10 then found10 = true end
+    if value == 20 then found20 = true end
+end
+assert_eq(found10 and found20, true, "values() missing expected values")
+
+-- Test mdelete
+local c_mdel = Cache.new({ max_size = 10 })
+c_mdel:set("d1", 1)
+c_mdel:set("d2", 2)
+c_mdel:set("d3", 3)
+local deleted = c_mdel:mdelete({"d1", "d2", "missing"})
+assert_eq(deleted, 2, "mdelete() count failed")
+assert_eq(c_mdel:size(), 1, "mdelete() size failed")
+assert_eq(c_mdel:get("d3"), 3, "mdelete() removed wrong key")
+
+local c_mdel2 = Cache.new({ max_size = 10 })
+c_mdel2:set("a", 1)
+c_mdel2:set("b", 2)
+assert_eq(c_mdel2:mdelete("a", "b"), 2, "mdelete() varargs failed")
+assert_eq(c_mdel2:size(), 0, "mdelete() varargs size failed")
+
+-- Test expired entries are treated as absent
+local c_exp = Cache.new({ default_ttl = 0 })
+c_exp:set("expired", "value", 0)
+local start_exp = os.time()
+while os.time() == start_exp do end
+assert_eq(c_exp:exists("expired"), false, "exists() should be false for expired key")
+assert_eq(c_exp:size(), 0, "size() should exclude expired keys")
+assert_eq(#c_exp:keys(), 0, "keys() should exclude expired keys")
+assert_eq(#c_exp:values(), 0, "values() should exclude expired keys")
+
+-- Test get_or_set
+local c_gos = Cache.new({ max_size = 10, default_ttl = 10 })
+assert_eq(c_gos:get_or_set("gos", "value"), "value", "get_or_set initial failed")
+assert_eq(c_gos:get_or_set("gos", "other"), "value", "get_or_set existing failed")
+assert_eq(c_gos:get("gos"), "value", "get_or_set stored failed")
+assert_eq(c_gos:get_or_set("factory", function() return 42 end), 42, "get_or_set factory failed")
+assert_eq(c_gos:get("factory"), 42, "get_or_set factory stored failed")
+
+-- Test setnx
+local c_setnx = Cache.new({ max_size = 10 })
+assert_eq(c_setnx:setnx("nx", "value"), true, "setnx() should succeed for missing key")
+assert_eq(c_setnx:setnx("nx", "other"), false, "setnx() should fail for existing key")
+assert_eq(c_setnx:get("nx"), "value", "setnx() stored wrong value")
+
+-- Test getset
+local c_getset = Cache.new({ max_size = 10 })
+c_getset:set("gs", "old")
+assert_eq(c_getset:getset("gs", "new"), "old", "getset() should return old value")
+assert_eq(c_getset:get("gs"), "new", "getset() should store new value")
+assert_eq(c_getset:getset("missing", "value"), nil, "getset() should return nil for missing key")
+
 print("All tests passed!")
