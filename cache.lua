@@ -64,6 +64,13 @@ function Cache:purge()
 end
 
 function Cache:set(key, value, ttl)
+    if self.max_size ~= nil and self.max_size <= 0 then
+        if self.data[key] then
+            self:delete(key)
+        end
+        return
+    end
+
     local node = self.data[key]
     if node and is_expired(node) then
         self:delete(key)
@@ -80,13 +87,18 @@ function Cache:set(key, value, ttl)
         detach_node(self, node)
         attach_to_head(self, node)
     else
-        -- New entry
-        if self.size >= self.max_size then
-            -- Evict least recently used (tail)
+        -- Remove expired entries before enforcing capacity.
+        if self.max_size ~= nil and self.size >= self.max_size then
+            self:purge()
+        end
+
+        -- Evict least recently used entries until there is room.
+        while self.max_size ~= nil and self.size >= self.max_size do
             local oldest = self.tail
-            if oldest then
-                self:delete(oldest.key)
+            if not oldest then
+                break
             end
+            self:delete(oldest.key)
         end
 
         node = { key = key, value = value, expires = expiration }
@@ -322,6 +334,9 @@ function Cache:get_or_set(key, default_value, ttl)
 end
 
 function Cache:setnx(key, value, ttl)
+    if self.max_size ~= nil and self.max_size <= 0 then
+        return false
+    end
     if self:exists(key) then
         return false
     end
