@@ -8,8 +8,8 @@ end
 function Cache.new(options)
     options = options or {}
     local self = setmetatable({}, Cache)
-    self.max_size = options.max_size or 1000
-    self.default_ttl = options.default_ttl or 3600
+    self.max_size = (options.max_size == nil) and 1000 or options.max_size
+    self.default_ttl = (options.default_ttl == nil) and 3600 or options.default_ttl
     self.data = {}
 
     -- LRU Doubly Linked List
@@ -70,7 +70,8 @@ function Cache:set(key, value, ttl)
         node = nil
     end
 
-    local expiration = os.time() + (ttl or self.default_ttl)
+    local expiration_ttl = (ttl == nil) and self.default_ttl or ttl
+    local expiration = os.time() + expiration_ttl
 
     if node then
         -- Update existing
@@ -174,7 +175,8 @@ function Cache:touch(key, ttl)
             self:delete(key)
             return false
         end
-        node.expires = os.time() + (ttl or self.default_ttl)
+        local expiration_ttl = (ttl == nil) and self.default_ttl or ttl
+        node.expires = os.time() + expiration_ttl
         detach_node(self, node)
         attach_to_head(self, node)
         return true
@@ -253,7 +255,7 @@ function Cache:get_all()
 end
 
 function Cache:increment(key, amount, ttl)
-    amount = amount or 1
+    amount = (amount == nil) and 1 or amount
     local val = self:get(key)
     if type(val) ~= "number" then
         val = 0
@@ -264,7 +266,7 @@ function Cache:increment(key, amount, ttl)
 end
 
 function Cache:decrement(key, amount, ttl)
-    amount = amount or 1
+    amount = (amount == nil) and 1 or amount
     local val = self:get(key)
     if type(val) ~= "number" then
         val = 0

@@ -181,4 +181,41 @@ assert_eq(c_getset:getset("gs", "new"), "old", "getset() should return old value
 assert_eq(c_getset:get("gs"), "new", "getset() should store new value")
 assert_eq(c_getset:getset("missing", "value"), nil, "getset() should return nil for missing key")
 
+-- Test ttl=0 with nonzero default_ttl (zero must not fall back to default)
+local c_ttl0 = Cache.new({ default_ttl = 100 })
+c_ttl0:set("zero", "gone", 0)
+local start_z = os.time()
+while os.time() == start_z do end
+assert_eq(c_ttl0:get("zero"), nil, "set with ttl=0 should expire immediately")
+assert_eq(c_ttl0:exists("zero"), false, "exists should be false after ttl=0")
+
+c_ttl0:mset({ a = 1, b = 2 }, 0)
+local start_m = os.time()
+while os.time() == start_m do end
+assert_eq(c_ttl0:size(), 0, "mset with ttl=0 should expire")
+
+c_ttl0:touch("touchzero", 5)
+-- touch on missing returns false; set first
+c_ttl0:set("touchzero", "v", 5)
+assert_eq(c_ttl0:touch("touchzero", 0), true, "touch with ttl=0 should succeed")
+local start_t = os.time()
+while os.time() == start_t do end
+assert_eq(c_ttl0:get("touchzero"), nil, "touch with ttl=0 should expire immediately")
+
+-- Test increment/decrement by zero (zero must not fall back to 1)
+local c_zeroamt = Cache.new({ max_size = 10 })
+assert_eq(c_zeroamt:increment("z", 0), 0, "increment by 0 on missing should be 0")
+assert_eq(c_zeroamt:increment("z", 0), 0, "increment by 0 on existing should be unchanged")
+assert_eq(c_zeroamt:decrement("z", 0), 0, "decrement by 0 should be unchanged")
+
+-- Test nil option defaults
+local c_nil = Cache.new({})
+assert_eq(c_nil.max_size, 1000, "default max_size")
+assert_eq(c_nil.default_ttl, 3600, "default default_ttl")
+
+-- Test zero option values are preserved
+local c_zeroopt = Cache.new({ max_size = 0, default_ttl = 0 })
+assert_eq(c_zeroopt.max_size, 0, "max_size=0 should be preserved")
+assert_eq(c_zeroopt.default_ttl, 0, "default_ttl=0 should be preserved")
+
 print("All tests passed!")
