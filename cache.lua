@@ -199,12 +199,11 @@ end
 function Cache:ttl(key)
     local node = self.data[key]
     if node then
-        local remaining = node.expires - os.time()
-        if remaining <= 0 then
+        if os.time() > node.expires then
             self:delete(key)
             return 0
         end
-        return remaining
+        return node.expires - os.time()
     end
     return -1
 end
