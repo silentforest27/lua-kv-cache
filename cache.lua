@@ -16,7 +16,7 @@ function Cache.new(options)
     self.head = nil
     self.tail = nil
 
-    self.size = 0
+    self._size = 0
     return self
 end
 
@@ -88,12 +88,12 @@ function Cache:set(key, value, ttl)
         attach_to_head(self, node)
     else
         -- Remove expired entries before enforcing capacity.
-        if self.max_size ~= nil and self.size >= self.max_size then
+        if self.max_size ~= nil and self._size >= self.max_size then
             self:purge()
         end
 
         -- Evict least recently used entries until there is room.
-        while self.max_size ~= nil and self.size >= self.max_size do
+        while self.max_size ~= nil and self._size >= self.max_size do
             local oldest = self.tail
             if not oldest then
                 break
@@ -104,7 +104,7 @@ function Cache:set(key, value, ttl)
         node = { key = key, value = value, expires = expiration }
         self.data[key] = node
         attach_to_head(self, node)
-        self.size = self.size + 1
+        self._size = self._size + 1
     end
 end
 
@@ -153,7 +153,7 @@ function Cache:delete(key)
     if node then
         detach_node(self, node)
         self.data[key] = nil
-        self.size = self.size - 1
+        self._size = self._size - 1
         return true
     end
     return false
@@ -161,7 +161,7 @@ end
 
 function Cache:size()
     self:purge()
-    return self.size
+    return self._size
 end
 
 function Cache:check_expiry(key)
@@ -177,7 +177,7 @@ function Cache:clear()
     self.data = {}
     self.head = nil
     self.tail = nil
-    self.size = 0
+    self._size = 0
 end
 
 function Cache:touch(key, ttl)
