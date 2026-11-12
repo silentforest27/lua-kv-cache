@@ -132,7 +132,7 @@ end
 
 function Cache:mget(keys)
     local result = {}
-    for _, key in ipairs(keys) do
+    for _, key in ipairs(keys or {}) do
         result[key] = self:get(key)
     end
     return result
@@ -299,8 +299,12 @@ function Cache:mdelete(keys, ...)
                 list[#list + 1] = key
             end
         end
-    else
-        list = { keys, ... }
+    elseif keys ~= nil then
+        list[#list + 1] = keys
+    end
+
+    for i = 1, select("#", ...) do
+        list[#list + 1] = select(i, ...)
     end
 
     local count = 0
@@ -334,6 +338,10 @@ end
 
 function Cache:setnx(key, value, ttl)
     if self.max_size ~= nil and self.max_size <= 0 then
+        local node = self.data[key]
+        if node and is_expired(node) then
+            self:delete(key)
+        end
         return false
     end
     if self:exists(key) then

@@ -218,4 +218,20 @@ local c_zeroopt = Cache.new({ max_size = 0, default_ttl = 0 })
 assert_eq(c_zeroopt.max_size, 0, "max_size=0 should be preserved")
 assert_eq(c_zeroopt.default_ttl, 0, "default_ttl=0 should be preserved")
 
+-- Test nil-safe and mixed mget/mdelete usage
+local c_nilargs = Cache.new({ max_size = 10 })
+assert_eq(#c_nilargs:mget(nil), 0, "mget(nil) should return an empty table")
+c_nilargs:set("n1", 1)
+c_nilargs:set("n2", 2)
+assert_eq(c_nilargs:mdelete({}, "n1", "n2"), 2, "mdelete() should combine empty tables and varargs")
+assert_eq(c_nilargs:size(), 0, "mdelete() mixed usage should remove all keys")
+
+-- Test setnx on an expired key
+local c_setnx_exp = Cache.new({ max_size = 10, default_ttl = 0 })
+c_setnx_exp:set("expired", "old", 0)
+local start_nx = os.time()
+while os.time() == start_nx do end
+assert_eq(c_setnx_exp:setnx("expired", "new"), true, "setnx() should succeed for an expired key")
+assert_eq(c_setnx_exp:get("expired"), "new", "setnx() should store the new value")
+
 print("All tests passed!")
