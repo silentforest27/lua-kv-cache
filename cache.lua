@@ -5,6 +5,29 @@ local function is_expired(node)
     return node ~= nil and os.time() > node.expires
 end
 
+local function collect_keys(input, ...)
+    local list = {}
+    if type(input) == "table" then
+        if #input > 0 and input[1] ~= nil then
+            for _, key in ipairs(input) do
+                list[#list + 1] = key
+            end
+        else
+            for key in pairs(input) do
+                list[#list + 1] = key
+            end
+        end
+    elseif input ~= nil then
+        list[#list + 1] = input
+    end
+
+    for i = 1, select("#", ...) do
+        list[#list + 1] = select(i, ...)
+    end
+
+    return list
+end
+
 function Cache.new(options)
     options = options or {}
     local self = setmetatable({}, Cache)
@@ -58,9 +81,14 @@ function Cache:purge()
         end
         node = next_node
     end
+
+    local count = 0
     for _, key in ipairs(expired) do
-        self:delete(key)
+        if self:delete(key) then
+            count = count + 1
+        end
     end
+    return count
 end
 
 function Cache:set(key, value, ttl)
@@ -130,9 +158,9 @@ function Cache:get(key)
     return node.value
 end
 
-function Cache:mget(keys)
+function Cache:mget(keys, ...)
     local result = {}
-    for _, key in ipairs(keys or {}) do
+    for _, key in ipairs(collect_keys(keys, ...)) do
         result[key] = self:get(key)
     end
     return result
@@ -288,27 +316,8 @@ function Cache:decrement(key, amount, ttl)
 end
 
 function Cache:mdelete(keys, ...)
-    local list = {}
-    if type(keys) == "table" then
-        if #keys > 0 and keys[1] ~= nil then
-            for _, key in ipairs(keys) do
-                list[#list + 1] = key
-            end
-        else
-            for key in pairs(keys) do
-                list[#list + 1] = key
-            end
-        end
-    elseif keys ~= nil then
-        list[#list + 1] = keys
-    end
-
-    for i = 1, select("#", ...) do
-        list[#list + 1] = select(i, ...)
-    end
-
     local count = 0
-    for _, key in ipairs(list) do
+    for _, key in ipairs(collect_keys(keys, ...)) do
         if self:delete(key) then
             count = count + 1
         end

@@ -37,7 +37,7 @@ c_purge:set("p1", "val1", 0)
 c_purge:set("p2", "val2", 100)
 local start_p = os.time()
 while os.time() == start_p do end
-c_purge:purge()
+assert_eq(c_purge:purge(), 1, "Purge should report one removed entry")
 assert_eq(c_purge:size(), 1, "Purge failed to remove expired item")
 assert_eq(c_purge:get("p2"), "val2", "Purge removed non-expired item")
 
@@ -97,6 +97,17 @@ local results = c_mget:mget({"g1", "g2", "g3"})
 assert_eq(results["g1"], "v1", "mget() value g1 failed")
 assert_eq(results["g2"], "v2", "mget() value g2 failed")
 assert_eq(results["g3"], nil, "mget() should return nil for missing key")
+
+-- Test flexible mget input
+local c_mget2 = Cache.new({ max_size = 10 })
+c_mget2:set("x", 10)
+c_mget2:set("y", 20)
+local hash_results = c_mget2:mget({ x = true, y = true })
+assert_eq(hash_results.x, 10, "mget() hash-style lookup failed")
+assert_eq(hash_results.y, 20, "mget() hash-style lookup failed")
+local vararg_results = c_mget2:mget("x", "y")
+assert_eq(vararg_results.x, 10, "mget() varargs lookup failed")
+assert_eq(vararg_results.y, 20, "mget() varargs lookup failed")
 
 -- Test Increment/Decrement
 local c_inc = Cache.new({ max_size = 10 })
@@ -194,8 +205,6 @@ local start_m = os.time()
 while os.time() == start_m do end
 assert_eq(c_ttl0:size(), 0, "mset with ttl=0 should expire")
 
-c_ttl0:touch("touchzero", 5)
--- touch on missing returns false; set first
 c_ttl0:set("touchzero", "v", 5)
 assert_eq(c_ttl0:touch("touchzero", 0), true, "touch with ttl=0 should succeed")
 local start_t = os.time()
