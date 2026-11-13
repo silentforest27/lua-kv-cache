@@ -2,7 +2,7 @@ local Cache = {}
 Cache.__index = Cache
 
 local function is_expired(node)
-    return node ~= nil and os.time() > node.expires
+    return node ~= nil and os.time() >= node.expires
 end
 
 local function collect_keys(input, ...)
@@ -76,7 +76,7 @@ function Cache:purge()
     local node = self.head
     while node do
         local next_node = node.next
-        if now > node.expires then
+        if now >= node.expires then
             expired[#expired + 1] = node.key
         end
         node = next_node
@@ -146,7 +146,7 @@ function Cache:get(key)
     local node = self.data[key]
     if not node then return nil end
 
-    if os.time() > node.expires then
+    if os.time() >= node.expires then
         self:delete(key)
         return nil
     end
@@ -194,7 +194,7 @@ end
 
 function Cache:check_expiry(key)
     local node = self.data[key]
-    if node and os.time() > node.expires then
+    if node and os.time() >= node.expires then
         self:delete(key)
         return true
     end
@@ -227,7 +227,7 @@ end
 function Cache:ttl(key)
     local node = self.data[key]
     if node then
-        if os.time() > node.expires then
+        if os.time() >= node.expires then
             self:delete(key)
             return 0
         end
@@ -243,7 +243,7 @@ function Cache:keys()
     local node = self.head
     while node do
         local next_node = node.next
-        if now > node.expires then
+        if now >= node.expires then
             expired[#expired + 1] = node.key
         else
             keys[#keys + 1] = node.key
@@ -263,7 +263,7 @@ function Cache:values()
     local node = self.head
     while node do
         local next_node = node.next
-        if now > node.expires then
+        if now >= node.expires then
             expired[#expired + 1] = node.key
         else
             values[#values + 1] = node.value
@@ -281,7 +281,7 @@ function Cache:get_all()
     local now = os.time()
     local expired = {}
     for key, node in pairs(self.data) do
-        if now > node.expires then
+        if now >= node.expires then
             expired[#expired + 1] = key
         else
             result[key] = node.value
