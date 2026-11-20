@@ -22,7 +22,10 @@ local function collect_keys(input, ...)
     end
 
     for i = 1, select("#", ...) do
-        list[#list + 1] = select(i, ...)
+        local key = select(i, ...)
+        if key ~= nil then
+            list[#list + 1] = key
+        end
     end
 
     return list
