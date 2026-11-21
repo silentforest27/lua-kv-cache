@@ -243,4 +243,13 @@ while os.time() == start_nx do end
 assert_eq(c_setnx_exp:setnx("expired", "new"), true, "setnx() should succeed for an expired key")
 assert_eq(c_setnx_exp:get("expired"), "new", "setnx() should store the new value")
 
+-- Test nil-key safety
+local c_nilkey = Cache.new({ max_size = 10 })
+local size_before = c_nilkey:size()
+c_nilkey:set(nil, "x")
+assert_eq(c_nilkey:size(), size_before, "set(nil) should not change size")
+assert_eq(c_nilkey:get(nil), nil, "get(nil) should be nil")
+assert_eq(c_nilkey:increment(nil), 0, "increment(nil) should not corrupt size")
+assert_eq(c_nilkey:size(), size_before, "increment(nil) should not change size")
+
 print("All tests passed!")

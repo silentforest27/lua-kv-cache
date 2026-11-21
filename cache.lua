@@ -95,6 +95,10 @@ function Cache:purge()
 end
 
 function Cache:set(key, value, ttl)
+    if key == nil then
+        return
+    end
+
     if self.max_size ~= nil and self.max_size <= 0 then
         if self.data[key] then
             self:delete(key)
