@@ -43,6 +43,7 @@ cache:clear()
 - `Cache.new(options)` creates a cache. Options: `max_size`, `default_ttl`.
 - `set(key, value, ttl)` stores a value.
 - `get(key)` returns a value and marks it recently used.
+- `peek(key)` returns a value without changing LRU recency.
 - `mset(table, ttl)` stores multiple values.
 - `mget(keys)` returns values for multiple keys.
 - `exists(key)` / `has(key)` checks whether a key exists.

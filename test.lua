@@ -252,4 +252,23 @@ assert_eq(c_nilkey:get(nil), nil, "get(nil) should be nil")
 assert_eq(c_nilkey:increment(nil), 0, "increment(nil) should not corrupt size")
 assert_eq(c_nilkey:size(), size_before, "increment(nil) should not change size")
 
+-- Test peek
+local c_peek = Cache.new({ max_size = 2, default_ttl = 10 })
+assert_eq(c_peek:peek("missing"), nil, "peek() should return nil for a missing key")
+c_peek:set("a", 1)
+c_peek:set("b", 2)
+assert_eq(c_peek:peek("a"), 1, "peek() should return the stored value")
+c_peek:set("c", 3) -- "a" remains least recently used because peek did not promote it
+c_peek:peek(nil)
+assert_eq(c_peek:get("a"), nil, "peek() should not mark a key recently used")
+assert_eq(c_peek:get("b"), 2, "peek() should leave other entries intact")
+assert_eq(c_peek:get("c"), 3, "peek() should leave the new entry intact")
+
+local c_peek_exp = Cache.new({ default_ttl = 0 })
+c_peek_exp:set("expired", "value", 0)
+local start_peek = os.time()
+while os.time() == start_peek do end
+assert_eq(c_peek_exp:peek("expired"), nil, "peek() should return nil for an expired key")
+assert_eq(c_peek_exp:exists("expired"), false, "peek() should remove an expired key")
+
 print("All tests passed!")

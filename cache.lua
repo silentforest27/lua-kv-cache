@@ -165,6 +165,24 @@ function Cache:get(key)
     return node.value
 end
 
+function Cache:peek(key)
+    if key == nil then
+        return nil
+    end
+
+    local node = self.data[key]
+    if not node then
+        return nil
+    end
+
+    if is_expired(node) then
+        self:delete(key)
+        return nil
+    end
+
+    return node.value
+end
+
 function Cache:mget(keys, ...)
     local result = {}
     for _, key in ipairs(collect_keys(keys, ...)) do
