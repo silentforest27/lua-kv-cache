@@ -301,6 +301,10 @@ function Cache:get_all()
 end
 
 function Cache:increment(key, amount, ttl)
+    if key == nil then
+        return 0
+    end
+
     amount = (amount == nil) and 1 or amount
     local val = self:get(key)
     if type(val) ~= "number" then
@@ -312,6 +316,10 @@ function Cache:increment(key, amount, ttl)
 end
 
 function Cache:decrement(key, amount, ttl)
+    if key == nil then
+        return 0
+    end
+
     amount = (amount == nil) and 1 or amount
     local val = self:get(key)
     if type(val) ~= "number" then
@@ -353,6 +361,10 @@ function Cache:get_or_set(key, default_value, ttl)
 end
 
 function Cache:setnx(key, value, ttl)
+    if key == nil then
+        return false
+    end
+
     if self.max_size ~= nil and self.max_size <= 0 then
         local node = self.data[key]
         if node and is_expired(node) then
