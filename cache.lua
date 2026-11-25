@@ -359,6 +359,10 @@ function Cache:mdelete(keys, ...)
 end
 
 function Cache:get_or_set(key, default_value, ttl)
+    if key == nil then
+        return nil
+    end
+
     local node = self.data[key]
     if node then
         if is_expired(node) then
@@ -398,6 +402,10 @@ function Cache:setnx(key, value, ttl)
 end
 
 function Cache:getset(key, value, ttl)
+    if key == nil then
+        return nil
+    end
+
     local old = self:get(key)
     self:set(key, value, ttl)
     return old
