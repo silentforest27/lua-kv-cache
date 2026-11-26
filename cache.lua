@@ -1,422 +1,285 @@
-local Cache = {}
-Cache.__index = Cache
+local Cache = require("cache")
 
-local function is_expired(node)
-    return node ~= nil and os.time() >= node.expires
-end
-
-local function collect_keys(input, ...)
-    local list = {}
-    if type(input) == "table" then
-        if #input > 0 and input[1] ~= nil then
-            for _, key in ipairs(input) do
-                list[#list + 1] = key
-            end
-        else
-            for key in pairs(input) do
-                list[#list + 1] = key
-            end
-        end
-    elseif input ~= nil then
-        list[#list + 1] = input
-    end
-
-    for i = 1, select("#", ...) do
-        local key = select(i, ...)
-        if key ~= nil then
-            list[#list + 1] = key
-        end
-    end
-
-    return list
-end
-
-function Cache.new(options)
-    options = options or {}
-    local self = setmetatable({}, Cache)
-    self.max_size = (options.max_size == nil) and 1000 or options.max_size
-    self.default_ttl = (options.default_ttl == nil) and 3600 or options.default_ttl
-    self.data = {}
-
-    -- LRU Doubly Linked List
-    self.head = nil
-    self.tail = nil
-
-    self._size = 0
-    return self
-end
-
-local function detach_node(self, node)
-    if node.prev then
-        node.prev.next = node.next
-    else
-        self.head = node.next
-    end
-    if node.next then
-        node.next.prev = node.prev
-    else
-        self.tail = node.prev
-    end
-    node.next = nil
-    node.prev = nil
-end
-
-local function attach_to_head(self, node)
-    node.next = self.head
-    node.prev = nil
-    if self.head then
-        self.head.prev = node
-    end
-    self.head = node
-    if not self.tail then
-        self.tail = node
+local function assert_eq(actual, expected, msg)
+    if actual ~= expected then
+        error(string.format("%s: expected %s, got %s", msg, tostring(expected), tostring(actual)))
     end
 end
 
-function Cache:purge()
-    local now = os.time()
-    local expired = {}
-    local node = self.head
-    while node do
-        local next_node = node.next
-        if now >= node.expires then
-            expired[#expired + 1] = node.key
-        end
-        node = next_node
-    end
+print("Running tests...")
 
-    local count = 0
-    for _, key in ipairs(expired) do
-        if self:delete(key) then
-            count = count + 1
-        end
-    end
-    return count
+-- Test Basic Set/Get
+local c = Cache.new({ max_size = 2, default_ttl = 10 })
+c:set("a", 1)
+assert_eq(c:get("a"), 1, "Basic get failed")
+assert_eq(c:size(), 1, "Size should be 1")
+
+-- Test TTL
+local c_ttl = Cache.new({ default_ttl = 0 })
+c_ttl:set("short", "gone", 0)
+-- Wait slightly for expiration
+local start = os.time()
+while os.time() == start do end
+assert_eq(c_ttl:get("short"), nil, "TTL expiration failed")
+
+-- Test Capacity/Eviction
+local c_cap = Cache.new({ max_size = 2 })
+c_cap:set("1", "one")
+c_cap:set("2", "two")
+c_cap:set("3", "three") -- Should evict "1"
+assert_eq(c_cap:get("1"), nil, "Eviction failed")
+assert_eq(c_cap:get("2"), "two", "Wrong key evicted")
+assert_eq(c_cap:get("3"), "three", "New key not found")
+
+-- Test Purge
+local c_purge = Cache.new({ default_ttl = 0 })
+c_purge:set("p1", "val1", 0)
+c_purge:set("p2", "val2", 100)
+local start_p = os.time()
+while os.time() == start_p do end
+assert_eq(c_purge:purge(), 1, "Purge should report one removed entry")
+assert_eq(c_purge:size(), 1, "Purge failed to remove expired item")
+assert_eq(c_purge:get("p2"), "val2", "Purge removed non-expired item")
+
+-- Test Clear
+local c_clear = Cache.new({ max_size = 10 })
+c_clear:set("x", 1)
+c_clear:set("y", 2)
+c_clear:clear()
+assert_eq(c_clear:size(), 0, "Clear failed to reset size")
+assert_eq(c_clear:get("x"), nil, "Clear failed to remove elements")
+
+-- Test Exists
+local c_ex = Cache.new({ max_size = 10 })
+c_ex:set("key", "val")
+assert_eq(c_ex:exists("key"), true, "exists() should return true for existing key")
+assert_eq(c_ex:exists("missing"), false, "exists() should return false for missing key")
+
+-- Test Touch and TTL
+local c_time = Cache.new({ default_ttl = 10 })
+c_time:set("t1", "val", 5)
+local initial_ttl = c_time:ttl("t1")
+assert_eq(initial_ttl <= 5, true, "Initial TTL too high")
+assert_eq(initial_ttl > 0, true, "Initial TTL too low")
+
+c_time:touch("t1", 20)
+local touched_ttl = c_time:ttl("t1")
+assert_eq(touched_ttl <= 20, true, "Touched TTL too high")
+assert_eq(touched_ttl > 5, true, "Touched TTL did not increase")
+assert_eq(c_time:ttl("missing"), -1, "ttl() for missing key should be -1")
+
+-- Test Keys
+local c_keys = Cache.new({ max_size = 10 })
+c_keys:set("k1", 1)
+c_keys:set("k2", 2)
+local keys = c_keys:keys()
+assert_eq(#keys, 2, "keys() should return 2 keys")
+local found1, found2 = false, false
+for _, k in ipairs(keys) do
+    if k == "k1" then found1 = true end
+    if k == "k2" then found2 = true end
 end
+assert_eq(found1 and found2, true, "keys() missing expected keys")
 
-function Cache:set(key, value, ttl)
-    if key == nil then
-        return
-    end
+-- Test mset
+local c_mset = Cache.new({ max_size = 10 })
+c_mset:mset({ m1 = "val1", m2 = "val2", m3 = "val3" })
+assert_eq(c_mset:size(), 3, "mset() size failed")
+assert_eq(c_mset:get("m1"), "val1", "mset() value 1 failed")
+assert_eq(c_mset:get("m2"), "val2", "mset() value 2 failed")
+assert_eq(c_mset:get("m3"), "val3", "mset() value 3 failed")
 
-    if self.max_size ~= nil and self.max_size <= 0 then
-        if self.data[key] then
-            self:delete(key)
-        end
-        return
-    end
+-- Test mget
+local c_mget = Cache.new({ max_size = 10 })
+c_mget:set("g1", "v1")
+c_mget:set("g2", "v2")
+local results = c_mget:mget({"g1", "g2", "g3"})
+assert_eq(results["g1"], "v1", "mget() value g1 failed")
+assert_eq(results["g2"], "v2", "mget() value g2 failed")
+assert_eq(results["g3"], nil, "mget() should return nil for missing key")
 
-    local node = self.data[key]
-    if node and is_expired(node) then
-        self:delete(key)
-        node = nil
-    end
+-- Test flexible mget input
+local c_mget2 = Cache.new({ max_size = 10 })
+c_mget2:set("x", 10)
+c_mget2:set("y", 20)
+local hash_results = c_mget2:mget({ x = true, y = true })
+assert_eq(hash_results.x, 10, "mget() hash-style lookup failed")
+assert_eq(hash_results.y, 20, "mget() hash-style lookup failed")
+local vararg_results = c_mget2:mget("x", "y")
+assert_eq(vararg_results.x, 10, "mget() varargs lookup failed")
+assert_eq(vararg_results.y, 20, "mget() varargs lookup failed")
 
-    local expiration_ttl = (ttl == nil) and self.default_ttl or ttl
-    local expiration = os.time() + expiration_ttl
+-- Test nil entries in array-style mget/mdelete inputs
+local c_nilarr = Cache.new({ max_size = 10 })
+c_nilarr:set("a", 1)
+c_nilarr:set("b", 2)
+local nilarr_results = c_nilarr:mget({ "a", nil, "b" })
+assert_eq(nilarr_results.a, 1, "mget() should skip nil array entries")
+assert_eq(nilarr_results.b, 2, "mget() should skip nil array entries")
+local nilarr_deleted = c_nilarr:mdelete({ "a", nil, "b" })
+assert_eq(nilarr_deleted, 2, "mdelete() should skip nil array entries")
+assert_eq(c_nilarr:size(), 0, "mdelete() should remove all non-nil keys")
 
-    if node then
-        -- Update existing
-        node.value = value
-        node.expires = expiration
-        detach_node(self, node)
-        attach_to_head(self, node)
-    else
-        -- Remove expired entries before enforcing capacity.
-        if self.max_size ~= nil and self._size >= self.max_size then
-            self:purge()
-        end
+-- Test Increment/Decrement
+local c_inc = Cache.new({ max_size = 10 })
+assert_eq(c_inc:increment("counter"), 1, "Inc missing key should start at 1")
+assert_eq(c_inc:increment("counter"), 2, "Inc existing key failed")
+assert_eq(c_inc:increment("counter", 5), 7, "Inc with amount failed")
+assert_eq(c_inc:decrement("counter"), 6, "Dec existing key failed")
+assert_eq(c_inc:decrement("counter", 3), 3, "Dec with amount failed")
+assert_eq(c_inc:decrement("missing"), -1, "Dec missing key should start at 0 then dec")
 
-        -- Evict least recently used entries until there is room.
-        while self.max_size ~= nil and self._size >= self.max_size do
-            local oldest = self.tail
-            if not oldest then
-                break
-            end
-            self:delete(oldest.key)
-        end
+-- Test Inc/Dec with non-numeric
+c_inc:set("string", "not a number")
+assert_eq(c_inc:increment("string"), 1, "Inc on non-numeric should reset to 0 then inc")
 
-        node = { key = key, value = value, expires = expiration }
-        self.data[key] = node
-        attach_to_head(self, node)
-        self._size = self._size + 1
-    end
+-- Test get_all
+local c_all = Cache.new({ max_size = 10 })
+c_all:set("a1", "v1")
+c_all:set("a2", "v2", 0)
+local start_all = os.time()
+while os.time() == start_all do end
+local all = c_all:get_all()
+assert_eq(all["a1"], "v1", "get_all() missing valid key")
+assert_eq(all["a2"], nil, "get_all() should not return expired key")
+
+-- Test Values
+local c_values = Cache.new({ max_size = 10 })
+c_values:set("v1", 10)
+c_values:set("v2", 20)
+local values = c_values:values()
+assert_eq(#values, 2, "values() count failed")
+local found10, found20 = false, false
+for _, value in ipairs(values) do
+    if value == 10 then found10 = true end
+    if value == 20 then found20 = true end
 end
+assert_eq(found10 and found20, true, "values() missing expected values")
 
-function Cache:mset(table_data, ttl)
-    for key, value in pairs(table_data or {}) do
-        self:set(key, value, ttl)
-    end
-end
+-- Test mdelete
+local c_mdel = Cache.new({ max_size = 10 })
+c_mdel:set("d1", 1)
+c_mdel:set("d2", 2)
+c_mdel:set("d3", 3)
+local deleted = c_mdel:mdelete({"d1", "d2", "missing"})
+assert_eq(deleted, 2, "mdelete() count failed")
+assert_eq(c_mdel:size(), 1, "mdelete() size failed")
+assert_eq(c_mdel:get("d3"), 3, "mdelete() removed wrong key")
 
-function Cache:get(key)
-    local node = self.data[key]
-    if not node then return nil end
+local c_mdel2 = Cache.new({ max_size = 10 })
+c_mdel2:set("a", 1)
+c_mdel2:set("b", 2)
+assert_eq(c_mdel2:mdelete("a", "b"), 2, "mdelete() varargs failed")
+assert_eq(c_mdel2:size(), 0, "mdelete() varargs size failed")
 
-    if os.time() >= node.expires then
-        self:delete(key)
-        return nil
-    end
+-- Test expired entries are treated as absent
+local c_exp = Cache.new({ default_ttl = 0 })
+c_exp:set("expired", "value", 0)
+local start_exp = os.time()
+while os.time() == start_exp do end
+assert_eq(c_exp:exists("expired"), false, "exists() should be false for expired key")
+assert_eq(c_exp:size(), 0, "size() should exclude expired keys")
+assert_eq(#c_exp:keys(), 0, "keys() should exclude expired keys")
+assert_eq(#c_exp:values(), 0, "values() should exclude expired keys")
 
-    -- Move to head (most recently used)
-    detach_node(self, node)
-    attach_to_head(self, node)
+-- Test get_or_set
+local c_gos = Cache.new({ max_size = 10, default_ttl = 10 })
+assert_eq(c_gos:get_or_set("gos", "value"), "value", "get_or_set initial failed")
+assert_eq(c_gos:get_or_set("gos", "other"), "value", "get_or_set existing failed")
+assert_eq(c_gos:get("gos"), "value", "get_or_set stored failed")
+assert_eq(c_gos:get_or_set("factory", function() return 42 end), 42, "get_or_set factory failed")
+assert_eq(c_gos:get("factory"), 42, "get_or_set factory stored failed")
 
-    return node.value
-end
+-- Test setnx
+local c_setnx = Cache.new({ max_size = 10 })
+assert_eq(c_setnx:setnx("nx", "value"), true, "setnx() should succeed for missing key")
+assert_eq(c_setnx:setnx("nx", "other"), false, "setnx() should fail for existing key")
+assert_eq(c_setnx:get("nx"), "value", "setnx() stored wrong value")
 
-function Cache:peek(key)
-    if key == nil then
-        return nil
-    end
+-- Test getset
+local c_getset = Cache.new({ max_size = 10 })
+c_getset:set("gs", "old")
+assert_eq(c_getset:getset("gs", "new"), "old", "getset() should return old value")
+assert_eq(c_getset:get("gs"), "new", "getset() should store new value")
+assert_eq(c_getset:getset("missing", "value"), nil, "getset() should return nil for missing key")
 
-    local node = self.data[key]
-    if not node then
-        return nil
-    end
+-- Test ttl=0 with nonzero default_ttl (zero must not fall back to default)
+local c_ttl0 = Cache.new({ default_ttl = 100 })
+c_ttl0:set("zero", "gone", 0)
+local start_z = os.time()
+while os.time() == start_z do end
+assert_eq(c_ttl0:get("zero"), nil, "set with ttl=0 should expire immediately")
+assert_eq(c_ttl0:exists("zero"), false, "exists should be false after ttl=0")
 
-    if is_expired(node) then
-        self:delete(key)
-        return nil
-    end
+c_ttl0:mset({ a = 1, b = 2 }, 0)
+local start_m = os.time()
+while os.time() == start_m do end
+assert_eq(c_ttl0:size(), 0, "mset with ttl=0 should expire")
 
-    return node.value
-end
+c_ttl0:set("touchzero", "v", 5)
+assert_eq(c_ttl0:touch("touchzero", 0), true, "touch with ttl=0 should succeed")
+local start_t = os.time()
+while os.time() == start_t do end
+assert_eq(c_ttl0:get("touchzero"), nil, "touch with ttl=0 should expire immediately")
 
-function Cache:mget(keys, ...)
-    local result = {}
-    for _, key in ipairs(collect_keys(keys, ...)) do
-        result[key] = self:get(key)
-    end
-    return result
-end
+-- Test increment/decrement by zero (zero must not fall back to 1)
+local c_zeroamt = Cache.new({ max_size = 10 })
+assert_eq(c_zeroamt:increment("z", 0), 0, "increment by 0 on missing should be 0")
+assert_eq(c_zeroamt:increment("z", 0), 0, "increment by 0 on existing should be unchanged")
+assert_eq(c_zeroamt:decrement("z", 0), 0, "decrement by 0 should be unchanged")
 
-function Cache:exists(key)
-    local node = self.data[key]
-    if not node then return false end
-    if is_expired(node) then
-        self:delete(key)
-        return false
-    end
-    return true
-end
+-- Test nil option defaults
+local c_nil = Cache.new({})
+assert_eq(c_nil.max_size, 1000, "default max_size")
+assert_eq(c_nil.default_ttl, 3600, "default default_ttl")
 
-function Cache:delete(key)
-    local node = self.data[key]
-    if node then
-        detach_node(self, node)
-        self.data[key] = nil
-        self._size = self._size - 1
-        return true
-    end
-    return false
-end
+-- Test zero option values are preserved
+local c_zeroopt = Cache.new({ max_size = 0, default_ttl = 0 })
+assert_eq(c_zeroopt.max_size, 0, "max_size=0 should be preserved")
+assert_eq(c_zeroopt.default_ttl, 0, "default_ttl=0 should be preserved")
 
-function Cache:size()
-    self:purge()
-    return self._size
-end
+-- Test nil-safe and mixed mget/mdelete usage
+local c_nilargs = Cache.new({ max_size = 10 })
+assert_eq(#c_nilargs:mget(nil), 0, "mget(nil) should return an empty table")
+c_nilargs:set("n1", 1)
+c_nilargs:set("n2", 2)
+assert_eq(c_nilargs:mdelete({}, "n1", "n2"), 2, "mdelete() should combine empty tables and varargs")
+assert_eq(c_nilargs:size(), 0, "mdelete() mixed usage should remove all keys")
 
-function Cache:check_expiry(key)
-    local node = self.data[key]
-    if node and os.time() >= node.expires then
-        self:delete(key)
-        return true
-    end
-    return false
-end
+-- Test setnx on an expired key
+local c_setnx_exp = Cache.new({ max_size = 10, default_ttl = 0 })
+c_setnx_exp:set("expired", "old", 0)
+local start_nx = os.time()
+while os.time() == start_nx do end
+assert_eq(c_setnx_exp:setnx("expired", "new"), true, "setnx() should succeed for an expired key")
+assert_eq(c_setnx_exp:get("expired"), "new", "setnx() should store the new value")
 
-function Cache:clear()
-    self.data = {}
-    self.head = nil
-    self.tail = nil
-    self._size = 0
-end
+-- Test nil-key safety
+local c_nilkey = Cache.new({ max_size = 10 })
+local size_before = c_nilkey:size()
+c_nilkey:set(nil, "x")
+assert_eq(c_nilkey:size(), size_before, "set(nil) should not change size")
+assert_eq(c_nilkey:get(nil), nil, "get(nil) should be nil")
+assert_eq(c_nilkey:increment(nil), 0, "increment(nil) should not corrupt size")
+assert_eq(c_nilkey:size(), size_before, "increment(nil) should not change size")
 
-function Cache:touch(key, ttl)
-    local node = self.data[key]
-    if node then
-        if is_expired(node) then
-            self:delete(key)
-            return false
-        end
-        local expiration_ttl = (ttl == nil) and self.default_ttl or ttl
-        node.expires = os.time() + expiration_ttl
-        detach_node(self, node)
-        attach_to_head(self, node)
-        return true
-    end
-    return false
-end
+-- Test peek
+local c_peek = Cache.new({ max_size = 2, default_ttl = 10 })
+assert_eq(c_peek:peek("missing"), nil, "peek() should return nil for a missing key")
+c_peek:set("a", 1)
+c_peek:set("b", 2)
+assert_eq(c_peek:peek("a"), 1, "peek() should return the stored value")
+c_peek:set("c", 3) -- "a" remains least recently used because peek did not promote it
+c_peek:peek(nil)
+assert_eq(c_peek:get("a"), nil, "peek() should not mark a key recently used")
+assert_eq(c_peek:get("b"), 2, "peek() should leave other entries intact")
+assert_eq(c_peek:get("c"), 3, "peek() should leave the new entry intact")
 
-function Cache:ttl(key)
-    local node = self.data[key]
-    if node then
-        if os.time() >= node.expires then
-            self:delete(key)
-            return 0
-        end
-        return node.expires - os.time()
-    end
-    return -1
-end
+local c_peek_exp = Cache.new({ default_ttl = 0 })
+c_peek_exp:set("expired", "value", 0)
+local start_peek = os.time()
+while os.time() == start_peek do end
+assert_eq(c_peek_exp:peek("expired"), nil, "peek() should return nil for an expired key")
+assert_eq(c_peek_exp:exists("expired"), false, "peek() should remove an expired key")
 
-function Cache:keys()
-    local now = os.time()
-    local keys = {}
-    local expired = {}
-    local node = self.head
-    while node do
-        local next_node = node.next
-        if now >= node.expires then
-            expired[#expired + 1] = node.key
-        else
-            keys[#keys + 1] = node.key
-        end
-        node = next_node
-    end
-    for _, key in ipairs(expired) do
-        self:delete(key)
-    end
-    return keys
-end
-
-function Cache:values()
-    local now = os.time()
-    local values = {}
-    local expired = {}
-    local node = self.head
-    while node do
-        local next_node = node.next
-        if now >= node.expires then
-            expired[#expired + 1] = node.key
-        else
-            values[#values + 1] = node.value
-        end
-        node = next_node
-    end
-    for _, key in ipairs(expired) do
-        self:delete(key)
-    end
-    return values
-end
-
-function Cache:get_all()
-    local result = {}
-    local now = os.time()
-    local expired = {}
-    for key, node in pairs(self.data) do
-        if now >= node.expires then
-            expired[#expired + 1] = key
-        else
-            result[key] = node.value
-        end
-    end
-    for _, key in ipairs(expired) do
-        self:delete(key)
-    end
-    return result
-end
-
-function Cache:increment(key, amount, ttl)
-    if key == nil then
-        return 0
-    end
-
-    amount = (amount == nil) and 1 or amount
-    local val = self:get(key)
-    if type(val) ~= "number" then
-        val = 0
-    end
-    local new_val = val + amount
-    self:set(key, new_val, ttl)
-    return new_val
-end
-
-function Cache:decrement(key, amount, ttl)
-    if key == nil then
-        return 0
-    end
-
-    amount = (amount == nil) and 1 or amount
-    local val = self:get(key)
-    if type(val) ~= "number" then
-        val = 0
-    end
-    local new_val = val - amount
-    self:set(key, new_val, ttl)
-    return new_val
-end
-
-function Cache:mdelete(keys, ...)
-    local count = 0
-    for _, key in ipairs(collect_keys(keys, ...)) do
-        if self:delete(key) then
-            count = count + 1
-        end
-    end
-    return count
-end
-
-function Cache:get_or_set(key, default_value, ttl)
-    if key == nil then
-        return nil
-    end
-
-    local node = self.data[key]
-    if node then
-        if is_expired(node) then
-            self:delete(key)
-        else
-            detach_node(self, node)
-            attach_to_head(self, node)
-            return node.value
-        end
-    end
-
-    local value = default_value
-    if type(default_value) == "function" then
-        value = default_value()
-    end
-    self:set(key, value, ttl)
-    return value
-end
-
-function Cache:setnx(key, value, ttl)
-    if key == nil then
-        return false
-    end
-
-    if self.max_size ~= nil and self.max_size <= 0 then
-        local node = self.data[key]
-        if node and is_expired(node) then
-            self:delete(key)
-        end
-        return false
-    end
-    if self:exists(key) then
-        return false
-    end
-    self:set(key, value, ttl)
-    return true
-end
-
-function Cache:getset(key, value, ttl)
-    if key == nil then
-        return nil
-    end
-
-    local old = self:get(key)
-    self:set(key, value, ttl)
-    return old
-end
-
--- Common aliases
-Cache.has = Cache.exists
-Cache.count = Cache.size
-Cache.mdel = Cache.mdelete
-Cache.delete_many = Cache.mdelete
-Cache.remember = Cache.get_or_set
-Cache.fetch = Cache.get_or_set
-
-return Cache
+print("All tests passed!")
